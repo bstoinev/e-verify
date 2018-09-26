@@ -1,0 +1,33 @@
+﻿@{
+    Layout = null;
+}
+
+<style>
+    #divEcpUnqualified div.row {
+        padding: 2px 10px;
+    }
+</style>
+
+<div id="divEcpUnqualified" class="row" @*data-bind="visible: !Eligible()"*@>
+    <div class="col-md-8">
+        <div class="row">
+            <div class="col-md-12 well well-sm">
+                <br />
+                <br />
+                Please review Form I-9 for errors.
+                It appears that Form I-9 is not yet complete.
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="row">
+            <div class="col-md-12 well well-sm">
+                This I-9 form is unqualified for submission to E-Verify because Form I-9 is not yet complete without errors.
+                Please review and resolve all Form I-9 error messages. Once the errors are resolved, Form I-9 will be submitted to E-Verify.
+                <br />
+                <br />
+                Note: If the I-9 contains a pending SSN, formI-9 will be submitted when the SSN is updated.
+            </div>
+        </div>
+    </div>
+</div>

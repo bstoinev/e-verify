@@ -1,0 +1,366 @@
+﻿@using LookoutService.Web.Controllers
+@using LookoutService.Web.Infrastructure
+@using LookoutService.Model.I9Documents
+@using LookoutService.Model.Dto
+
+@model IEnumerable<LookoutService.Model.Dto.NonFederalWorkingDayDto>
+
+@{
+    ViewBag.Title = "Federal non-working days";
+
+    var baseController = (BaseController)Html.ViewContext.Controller;
+    Func<Permissions, bool> isAutorizedTo = p => baseController.HasPermission(p);
+    Func<bool, string> disableIf = c => c ? "disabled='disabled'" : string.Empty;
+
+    var hasChangePermissions = baseController.HasPermission(Permissions.NonFederalWorkingDay_Add, Permissions.NonFederalWorkingDay_Edit);
+    var disabledIfCantEdit = disableIf(!isAutorizedTo(Permissions.NonFederalWorkingDay_Edit));
+    var disabledIfCantChange = disableIf(!hasChangePermissions);
+}
+
+@section Breadcrumbs
+{
+    <li>
+        <a href="javascript:void(0);">Home</a>
+        <span class="divider">/</span>
+    </li>
+    <li>
+        <a href="@Url.Action("Dashboard", "Home")">Dashboard</a>
+        <span class="divider">/</span>
+    </li>
+    <li class="active">Federal Non-working Days</li>
+}
+
+@section HtmlHead
+{
+    <link rel="stylesheet" href="~/Content/bootstrap-datetimepicker.min.css" />
+    <script src="~/Scripts/moment.min.js"></script>
+    <script src="~/Scripts/bootstrap-datetimepicker.min.js"></script>
+}
+
+<style>
+    .working {
+        cursor: wait;
+    }
+
+    #tblNfwdList {
+        cursor: pointer;
+        border: 1px solid #ddd;
+    }
+
+    #tblNfwdList th {
+        text-align: center;
+        background-color: #f5f5f5;
+    }
+
+    #tblNfwdList tbody td {
+        border-right: 1px solid #ddd;
+        border-top: none;
+        border-bottom: none;
+    }
+
+        #tblNfwdList tr td:first-child {
+            text-align: right;
+        }
+
+        #tblNfwdList tr td:last-child {
+            text-align: right;
+        }
+</style>
+
+<script type="text/javascript">
+    var mappingOptions = {
+        key: function(data){
+            return ko.utils.unwrapObservable(data.Id);
+        },
+        FallsOn: {
+            update: function (options) { return moment(options.data)._d; },
+        }
+    };
+
+    var emptyDto = @Html.Raw(Json.Encode(new NonFederalWorkingDayDto()));
+
+    var viewModel = {
+        Items: null,
+        SelectedItem: null,
+        Save: function(mappedNfwd){
+            $("*", divNfwdDetailsContainer).addClass("working");
+
+            var address = "/nonfederalworkingday/";
+            address += mappedNfwd.Id() ? "update" : "create";
+
+            var onSuccess = function(createdEntity){
+                ko.mapping.fromJS(createdEntity, mappingOptions, viewModel.SelectedItem);
+
+                var listItem = $.grep(viewModel.Items(), function(elem, index) { return elem.Id() == createdEntity.Id; })[0];
+                if (listItem) {
+                    ko.mapping.fromJS(createdEntity, mappingOptions, listItem);
+                }
+                else {
+                    viewModel.Items.mappedCreate(ko.mapping.fromJS(createdEntity, mappingOptions));
+                    $("tbody tr:last", tblNfwdList).on("click", divNfwdList_RowClick);
+                }
+            };
+
+            ServerCall(address, mappedNfwd, onSuccess);
+        },
+        Delete: function(mappedNfwd) {
+            var onSuccess = function(data) {
+                var deletedEntity = data;
+                ko.mapping.fromJS(emptyDto, mappingOptions, viewModel.SelectedItem);
+                viewModel.Items.mappedRemove({ Id: deletedEntity.Id });
+            };
+
+            ServerCall("/nonfederalworkingday/delete", mappedNfwd, onSuccess);
+        },
+    };
+
+    function btnDelete_Click(e){
+        var confirmed = confirm("Please confirm the deletion of the displayed item!");
+
+        if (confirmed) {
+            viewModel.Delete(viewModel.SelectedItem);
+            $(btnClose).click();
+        }
+    }
+
+    function btnCreate_Click(e){
+        ko.mapping.fromJS(emptyDto, mappingOptions, viewModel.SelectedItem);
+
+        $(divNfwdDetailsDialog).modal({
+            backdrop: "static",
+            show: true,
+        });
+    }
+
+    function btnSave_Click(e) {
+        if (CanSave())
+        {
+            viewModel.Save(viewModel.SelectedItem);
+        }
+    }
+
+    function btnSaveAndClose_Click(e) {
+        if (CanSave())
+        {
+            viewModel.Save(viewModel.SelectedItem);
+            $(btnClose).click();
+        }
+    }
+
+    function CanSave(){
+        var result = viewModel.SelectedItem.isValid();
+
+        if (!result) {
+            alert("You must correct the stated errors before saving.\n\n -- OR --\n\n Close the dialog to dismiss the change(s).");
+        }
+
+        return result;
+    }
+
+    function divNfwdList_RowClick(e) {
+        $(e.currentTarget).addClass("warning");
+
+        var selectedIndex = e.currentTarget.rowIndex - 1;
+        var nfwd = ko.toJS(viewModel.Items()[selectedIndex]);
+        ko.mapping.fromJS(nfwd, mappingOptions, viewModel.SelectedItem);
+
+        $(divNfwdDetailsDialog).modal({
+            backdrop: "static",
+            show: true,
+        });
+    }
+
+    function divNfwdDetailsDialog_Hide(e)
+    {
+        $("tbody tr", tblNfwdList).removeClass("warning");
+    }
+
+    function InitializeDtp()
+    {
+        var currentDate = new Date(Date.now());
+        var minimumDate = new Date(currentDate.getFullYear(), 0, 1);
+
+        $(inputFallsOn).datetimepicker({
+            format: "dddd, DD MMMM, YYYY",
+            minDate: minimumDate
+        });
+    }
+
+    function ServerCall(actionUrl, mappedNfwd, successCallback, errorCallback, completeCallback) {
+        var callbackComplete = completeCallback || function(response) {
+            var data = response && response.responseJSON;
+            if (data) {
+                var severity = data.HasError ? NotificationType.error : NotificationType.success;
+                Notifier.showNotification(severity, data.Message || "Error occurred.");
+            }
+
+            $("*", divNfwdDetailsContainer).removeClass("working");
+        };
+
+        var callbackError = function (response) {
+            errorCallback(response);
+        }
+
+        var callbackSuccess = function (response) {
+            if (!response.HasError) {
+                if (response.Model && response.Model.length == 1) {
+                    if (successCallback) {
+                        successCallback(response.Model[0]);
+                    }
+                }
+                else {
+                    Notifier.showNotification(NotificationType.warning, "Unexpected data is returned from the server.");
+                }
+            }
+        }
+
+        var arg = {models: [ko.mapping.toJS(mappedNfwd)]};
+
+        LookoutService.CallServer(actionUrl, arg, callbackSuccess, callbackError, callbackComplete);
+    }
+
+    $(document).ready(function () {
+        InitializeDtp();
+
+        viewModel.Items = ko.mapping.fromJS(@Html.Raw(Json.Encode(Model)), mappingOptions);
+        viewModel.SelectedItem = ko.mapping.fromJS(emptyDto, mappingOptions);
+
+        ko.bindingHandlers.dtp = {
+            init: function(element, valueAccessor, allBindings, viewModel, bindingContext) {
+                $(element).datetimepicker();
+                $(element).on("dp.change", function (e) {
+                    var observable = valueAccessor();
+                    observable(e.date && e.date._d);
+                });
+            },
+            update: function(element, valueAccessor, allBindings, viewModel, bindingContext) {
+                var value = ko.utils.unwrapObservable(valueAccessor());
+                $(element).data("DateTimePicker").date(value);
+            }
+        };
+
+        viewModel.SelectedItem.Description.extend({
+            maxLength: 512
+        });
+
+        viewModel.SelectedItem.FallsOn.extend({
+            required: true
+        });
+
+        viewModel.SelectedItem.Name.extend({
+            required: true,
+            maxLength: 64
+        });
+
+        viewModel.errors = ko.validation.group(viewModel.SelectedItem);
+
+        ko.applyBindings(viewModel.Items, mainWorkArea);
+        ko.applyBindings(viewModel.SelectedItem, divNfwdDetailsContainer)
+
+        $(btnCreate).on("click", btnCreate_Click);
+        $(btnDelete).on("click", btnDelete_Click);
+        $(btnSave).on("click", btnSave_Click);
+        $(btnSaveAndClose).on("click", btnSaveAndClose_Click);
+        $(divNfwdDetailsDialog).on("hide.bs.modal", divNfwdDetailsDialog_Hide);
+        $("tbody tr", tblNfwdList).on("click", divNfwdList_RowClick);
+
+        $("button", divNfwdDetailsDialog).on("focus", function(e){ e.target.blur(); })
+    });
+
+</script>
+
+<h2>Non-federal working days</h2>
+
+<button id="btnCreate" type="button" @disableIf(!isAutorizedTo(Permissions.NonFederalWorkingDay_Add)) class="btn btn-default">Create new</button>
+<br />
+<br />
+<div id="mainWorkArea" class="container-fluid">
+    <div class="row">
+        <div class="col-md-6">
+            <table id="tblNfwdList" class="table table-condensed table-hover">
+                <thead>
+                    <tr>
+                        <th class='col-md-1'>Id</th>
+                        <th class='col-md-5'>Name</th>
+                        <th class='col-md-3'>Falls on</th>
+                    </tr>
+                </thead>
+                <tbody data-bind="foreach: viewModel.Items">
+                    <tr>
+                        <td data-bind="text: Id"></td>
+                        <td data-bind="text: Name"></td>
+                        <td data-bind="text: FallsOn().toDateString()"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="divNfwdDetailsDialog" class="modal fade">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                <h4 class="modal-title">Non-federal working day details</h4>
+            </div>
+            <div id="divNfwdDetailsContainer" class="modal-body">
+                <div role="tabpanel">
+                    <ul id="RecordDetailsTabs" class="nav nav-tabs" role="tablist">
+                        <li role="presentation" data-toggle="tab" class="active">
+                            <a href="#recordDetails">Details</a>
+                        </li>
+                        <li role="presentation" data-toggle="tab">
+                            <a href="#auditInfo">Audit</a>
+                        </li>
+                    </ul>
+                    <div class="tab-content">
+                        <div id="recordDetails" class="tab-pane active" role="tabpanel">
+                            <br />
+                            <div class="form-horizontal">
+                                <div class="form-group">
+                                    <label class="control-label col-md-3">Id</label>
+                                    <div class="col-md-9">
+                                        <input type="text" disabled="disabled" data-bind="value: Id" class="form-control" />
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="control-label col-md-3">Name</label>
+                                    <div class="col-md-9">
+                                        <input type="text" @disabledIfCantEdit data-bind="value: Name" class="form-control" />
+                                        <span class="field-validation-error" data-bind="validationMessage: Name"></span>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="control-label col-md-3">Falls on</label>
+                                    <div class="col-md-9">
+                                        <input id="inputFallsOn" type="text" @disabledIfCantEdit class="form-control" data-bind="dtp: FallsOn" />
+                                        <span class="field-validation-error" data-bind="validationMessage: FallsOn"></span>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="control-label col-md-3">Description</label>
+                                    <div class="col-md-9">
+                                        <textarea @disabledIfCantEdit rows="5" data-bind="value: Description" class="form-control"></textarea>
+                                        <span class="field-validation-error" data-bind="validationMessage: Description"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="auditInfo" class="tab-pane" role="tabpanel">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btnDelete" type="button" @disableIf(!isAutorizedTo(Permissions.NonFederalWorkingDay_Delete)) class="btn btn-danger pull-left">Delete</button>
+                <button id="btnSave" type="button" @disabledIfCantChange class="btn btn-default">Save</button>
+                <button id="btnSaveAndClose" @disabledIfCantChange type="button" class="btn btn-primary">Save and Close</button>
+                <button id="btnClose" type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>

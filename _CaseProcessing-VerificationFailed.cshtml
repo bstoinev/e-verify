@@ -1,0 +1,32 @@
+﻿@{
+    Layout = null;
+}
+
+<style>
+    #divEcpVerificationFailed div.row {
+        padding: 2px 10px;
+    }
+</style>
+
+<div id="divEcpVerificationFailed" class="row">
+    <div class="col-md-8">
+        <div class="row">
+            <div class="col-md-12 well well-sm">
+                <br />
+                Review the case rejection reason provided by E-Verify<br />
+                <br />
+                If you still need assistance, please contact the Help Desk.
+                <br />
+                <br />
+                <button type="button" class="btn btn-primary">Try Again</button>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="row">
+            <div class="col-md-12 well well-sm">
+                @Html.Raw(ViewBag.ProcessingAssistanceHtml)
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,70 @@
+﻿@using Newtonsoft.Json
+
+@model LookoutService.Web.Models.Everify.EverifyCaseHistoryModel
+
+<script type="text/javascript">
+    var EverifyCase = EverifyCase || {};
+    EverifyCase.History = {
+        MappingOptions: {
+            OccurredOn: LookoutService.Knockout.MomentBinder,
+        },
+        ViewModel: null,
+    };
+
+    $(document).ready(function () {
+        EverifyCase.History.ViewModel = ko.mapping.fromJS(@Html.Raw(JsonConvert.SerializeObject(Model)), EverifyCase.History.MappingOptions);
+    });
+
+    $(document).ready(function () {
+        ko.applyBindings(EverifyCase.History.ViewModel, divCaseHistory);
+    });
+</script>
+
+<style>
+    .working {
+        cursor: wait;
+    }
+
+    #tblCaseHistory {
+        cursor: pointer;
+        border: 1px solid #ddd;
+    }
+
+        #tblCaseHistory th {
+            text-align: center;
+            background-color: #f5f5f5;
+        }
+
+        #tblCaseHistory tbody td {
+            border-right: 1px solid #ddd;
+            border-top: none;
+            border-bottom: none;
+            white-space: nowrap;
+            /*text-wrap: none;*/
+            /*text-overflow: ellipsis;*/
+            overflow-x: hidden;
+        }
+
+        #tblCaseHistory tr td:first-child {
+            text-align: right;
+        }
+</style>
+
+<table id="tblCaseHistory" class="table table-condensed table-hover" style="table-layout: fixed">
+    <thead>
+        <tr>
+            <th class="col-md-2">Date-Time</th>
+            <th class="col-md-2">Activity</th>
+            <th class="col-md-2">Actor</th>
+            <th class="col-md-6">Status</th>
+        </tr>
+    </thead>
+    <tbody data-bind="foreach: Events">
+        <tr>
+            <td data-bind="text: OccurredOn().toDateString()"></td>
+            <td data-bind="text: Activity"></td>
+            <td data-bind="text: Actor"></td>
+            <td class="col-md-6" data-bind="text: Status"></td>
+        </tr>
+    </tbody>
+</table>

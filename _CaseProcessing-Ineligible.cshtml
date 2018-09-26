@@ -1,0 +1,33 @@
+﻿@{
+    Layout = null;
+}
+
+<style>
+    #divEcpIneligible div.row {
+        padding: 2px 10px;
+    }
+</style>
+
+<div id="divEcpIneligible" class="row" @*data-bind="visible: !Eligible()"*@>
+    <div class="col-md-8">
+        <div class="row">
+            <div class="col-md-12 well well-sm">
+                <br />
+                <br />
+                No further action is required.
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="row">
+            <div class="col-md-12 well well-sm">
+                This I-9 form is ineligible for submission to E-Verify for one of the following reasons:
+                <br />
+                <ol>
+                    <li>This location is not active for E-Verify.</li>
+                    <li>The date of hire is before the location began participating in E-Verify.</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>

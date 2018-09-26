@@ -1,0 +1,325 @@
+﻿@using Newtonsoft.Json
+@using System.Dynamic
+
+@{
+    Layout = null;
+    var processState = (LookoutService.Model.BusinessInteligence.Everify.TncState)ViewBag.TncProcessState;
+
+    dynamic tncStates = new ExpandoObject();
+    var dict = tncStates as IDictionary<string, object>;
+    var targetType = typeof(LookoutService.Model.BusinessInteligence.Everify.TncState);
+    targetType.GetFields().Where(fi => !fi.IsSpecialName).ToList()
+        .ForEach(fi => dict.Add(fi.Name, fi.GetRawConstantValue()));
+}
+
+<style>
+    #divEcpTnc div.row {
+        padding: 2px 10px;
+    }
+
+    #tblEcpTncActions tr > td {
+        vertical-align: middle;
+    }
+
+        #tblEcpTncActions tr > td:first-child, #tblEcpTncActions tr > td:nth-child(3) {
+            text-align: center;
+        }
+
+    #tblEcpTncActions tr:last-child > td {
+        border-bottom: 1px solid #ddd;
+    }
+</style>
+
+<script type="text/javascript">
+    var EverifyCase = EverifyCase || { };
+    EverifyCase.TNC = {
+        ActionEnum: {
+            PrintNotice: 0,
+            NotifyEmployee: 1,
+            ContestFindings: 2,
+            PrintLetter: 3
+        },
+        CurrentAction: 0,
+        CurrentState: ko.observable(@((int)processState)),
+        StateEnum: @Html.Raw(JsonConvert.SerializeObject(tncStates)),
+        ReceiveJobCallback: function (response) {
+            var everifyCaseJob = null;
+            //var severity = response.HasError ? NotificationType.error : NotificationType.success;
+            //var defaultMessage = response.HasError ? "Error occurred." : "Operation completed successfully.";
+            //Notifier.showNotification(severity, response.Message || defaultMessage);
+
+            if (!response.HasError) {
+                everifyCaseJob = ko.mapping.fromJS(response.Model);
+                EverifyCase.ViewModel.Jobs().push(everifyCaseJob);
+            }
+
+            return everifyCaseJob;
+        }
+    };
+
+    function btnEcpTncNotify_Click(e) {
+        var notifyOption = $("input[name='EcpTncNotifyOption']:checked");
+
+        if (notifyOption.length == 0) {
+            alert("You must indicate whether notification succeeded or not.");
+        }
+        else {
+            var isEmployeeNotified = JSON.parse(notifyOption.val());
+
+            var actionName = isEmployeeNotified ? "SsaTncEmployeeNotificationSucceeded" : "SsaTncEmployeeNotificationFailed";
+
+            var successCallback = function(response) {
+                var notificationJob = EverifyCase.TNC.ReceiveJobCallback(response);
+
+                with (EverifyCase.TNC) {
+                    if (notificationJob) {
+                        var newState = CurrentState() | (isEmployeeNotified ? StateEnum.NotificationSucceeded : StateEnum.NotificationFailed);
+
+                        if (notificationJob.Response()) {
+                            var notificationRes = $.parseJSON(notificationJob.Response());
+                            notificationRes.StatusCode == 0 ? newState &= ~StateEnum.Error : newState |= StateEnum.Error;
+                        }
+                    }
+                    else {
+                        newState = CurrentState() | StateEnum.Error;
+                    }
+
+                    CurrentState(newState);
+                }
+
+                ApplyState();
+            };
+
+            var errorCallback = function(response){
+                debugger;
+            };
+
+            var p = {
+                Id: EverifyCase.ViewModel.Id()
+            };
+
+            LookoutService.CallServer("/Everify/" + actionName, p, successCallback, errorCallback);
+        }
+    }
+
+    function btnEcpTncContenst_Click(e) {
+        var contestOption = $("input[name='EcpTncContestOption']:checked");
+
+        if (contestOption.length == 0) {
+            alert("You must indicate whether employee wants to contest the findings or not.");
+        }
+        else {
+            var shallContest = $.parseJSON(contestOption.val());
+            var cannotContest = !EverifyCase.TNC.CurrentState().HasFlag(EverifyCase.TNC.StateEnum.NotificationSucceeded);
+
+            debugger;
+
+            if (shallContest && cannotContest) {
+                alert("Cannot contest findings, since the employee is not notified.");
+            }
+            else {
+                var successCallback = function(response) {
+                    var referralJob = EverifyCase.TNC.ReceiveJobCallback(response);
+
+                    if (referralJob) {
+                        with (EverifyCase.TNC) {
+                            var newState = CurrentState() | (shallContest ? StateEnum.ReferralInitiated : StateEnum.ContestDisclaimer);
+                            CurrentState(newState);
+                        }
+
+                        ApplyState();
+                    }
+                };
+
+                var errorCallback = function (response) {
+                    debugger;
+                }
+
+                var actionName = shallContest ? "TriggerSsaReferral" : "TncDropContest";
+
+                var p = {
+                    Id: EverifyCase.ViewModel.Id()
+                };
+
+                LookoutService.CallServer("/Everify/" + actionName, p, successCallback, errorCallback);
+            }
+        }
+    }
+
+    function btnEcpTncPrintLetter_Click(e) {
+
+    }
+
+    function btnEcpTncPrintNotice_Click(e) {
+
+    }
+
+    function ApplyState() {
+        var disableNotification = true;
+        var disableContest = true;
+        var disableLetter = true;
+
+        with (EverifyCase.TNC) {
+            $(rbEcpTncNotified).prop("checked", CurrentState().HasFlag(StateEnum.NotificationSucceeded));
+            $(rbEcpTncNotNotified).prop("checked", CurrentState().HasFlag(StateEnum.NotificationFailed));
+
+            $(rbEcpTncContest).prop("checked", CurrentState().HasFlag(StateEnum.ReferralInitiated));
+            $(rbEcpTncDontContest).prop("checked", CurrentState().HasFlag(StateEnum.ContestDisclaimer));
+
+            if (CurrentState() == StateEnum.Unknown) {
+                CurrentAction = ActionEnum.NotifyEmployee;
+            }
+            else {
+                if (CurrentState().HasFlag(StateEnum.NotificationSucceeded) || CurrentState().HasFlag(StateEnum.NotificationFailed)) {
+                    CurrentAction = CurrentState().HasFlag(StateEnum.Error) ? ActionEnum.NotifyEmployee : ActionEnum.ContestFindings;
+                }
+
+                if (CurrentState().HasFlag(StateEnum.ReferralInitiated)) {
+                    CurrentAction = CurrentState().HasFlag(StateEnum.Error) ? ActionEnum.ContestFindings : ActionEnum.PrintNotice;
+                }
+            }
+
+            if (CurrentAction == ActionEnum.NotifyEmployee && CurrentState().HasFlag(StateEnum.Error)) {
+                var notificationJobs = $.grep(EverifyCase.ViewModel.Jobs(), function(elem, index) {
+                    return elem.JobType() == EverifyCase.JobTypeEnum.SsaNotify
+                });
+
+                var notificationJob = $(notificationJobs).last()[0];
+                var notificationRes = JSON.parse(notificationJob.Response());
+
+                var processingAssistanceHtml = "Notification error has occurred. <br /><br>"
+                    + "Status code: " + notificationRes.StatusCode + "<br />"
+                    + "Status message: " + notificationRes.StatusMessage + "<br />"
+                ;
+
+                $(divEcpTncNotificationError).html(processingAssistanceHtml);
+            }
+
+            disableNotification = CurrentAction != ActionEnum.NotifyEmployee;
+            disableContest = CurrentAction != ActionEnum.ContestFindings;
+            disableLetter = CurrentAction != ActionEnum.PrintLetter;
+        }
+
+        $("*", trNotification).prop("disabled", disableNotification);
+        $("*", trContest).prop("disabled", disableContest);
+        $("*", trLetter).prop("disabled", disableLetter);
+    }
+
+    $(document).ready(function () {
+        ApplyState();
+
+        $(btnEcpTncNotify).on("click", btnEcpTncNotify_Click);
+        $(btnEcpTncContenst).on("click", btnEcpTncContenst_Click);
+        $(btnEcpTncPrintLetter).on("click", btnEcpTncPrintLetter_Click);
+        $(btnEcpTncPrintNotice).on("click", btnEcpTncPrintNotice_Click);
+
+        ko.applyBindings(EverifyCase.TNC, divEcpTnc);
+    });
+</script>
+
+<div id="divEcpTnc" class="row">
+    <div class="col-md-8">
+        <div class="row">
+            <div class="col-md-12 well well-sm">
+                <br />
+                <div class="row">
+                    <div class="col-md-8 col-md-offset-1">
+                        <table id="tblEcpTncActions" class="table table-condensed">
+                            <tr>
+                                <td>1</td>
+                                <td>Print notice</td>
+                                <td></td>
+                                <td>
+                                    <button type="button" id="btnEcpTncPrintNotice" class="btn btn-default btn-block btn-sm">Print</button>
+                                </td>
+                            </tr>
+                            <tr id="trNotification">
+                                <td>2</td>
+                                <td>Notified?</td>
+                                <td>
+                                    <label class="radio-inline">
+                                        <input type="radio" id="rbEcpTncNotified" name="EcpTncNotifyOption" value="true" />
+                                        Yes
+                                    </label>
+                                    <label class="radio-inline">
+                                        <input type="radio" id="rbEcpTncNotNotified" name="EcpTncNotifyOption" value="false" />
+                                        No
+                                    </label>
+                                </td>
+                                <td>
+                                    <button type="button" id="btnEcpTncNotify" class="btn btn-default btn-block btn-sm">Submit</button>
+                                </td>
+                            </tr>
+                            <tr id="trContest">
+                                <td>3</td>
+                                <td>Contest Findings and Refer case?</td>
+                                <td>
+                                    <label class="radio-inline">
+                                        <input type="radio" id="rbEcpTncContest" name="EcpTncContestOption" value="true" />
+                                        Yes
+                                    </label>
+                                    <label class="radio-inline">
+                                        <input type="radio" id="rbEcpTncDontContest" name="EcpTncContestOption" value="false" />
+                                        No
+                                    </label>
+                                </td>
+                                <td>
+                                    <button type="button" id="btnEcpTncContenst" class="btn btn-default btn-block btn-sm">Submit</button>
+                                </td>
+                            </tr>
+                            <tr id="trLetter">
+                                <td>4</td>
+                                <td>Print Letter</td>
+                                <td></td>
+                                <td>
+                                    <button type="button" id="btnEcpTncPrintLetter" class="btn btn-default btn-block btn-sm">Print</button>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-8">
+                        <span>This is the final result. You must now close the case.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="row">
+            <div class="col-md-12 well well-sm">
+                <div id="divEcpTncBasics" data-bind="visible: CurrentState() == StateEnum.Unknown">
+                    <h5>TNC Basics</h5>
+                    Information does not match government records. Additional Action is required:
+                    <ol>
+                        <li>Print the provided Letter.</li>
+                        <li>Review the employee's data and the letter with the employee privately.</li>
+                        <li>Ask the employee if he will contest the Tentative NonConfirmation.</li>
+                    </ol>
+                </div>
+
+                <div id="divEcpTncNotificationSucceeded" data-bind="visible: CurrentState() == StateEnum.NotificationSucceeded">
+                    The employee may choose to Contest or NOT Contest the finding.
+                    If an employee chooses to Contest, the finding he will be referred to the government office issuing the notice to resolve the case.
+                    If an employee chooses NOT to Contest the finding, the employer may terminate the employee.
+                </div>
+
+                <div id="divEcpTncNotificationFailed" data-bind="visible: CurrentState() == StateEnum.NotificationFailed">
+                    A notification of failure to notify the employee was sent to E-Verify. You must now close the case.<br />
+                    <br />
+                    Please select appropriate closure code from the section bellow.
+                </div>
+
+                <div id="divEcpTncNotificationError" data-bind="visible: CurrentState().HasFlag(StateEnum.Error) && (CurrentState().HasFlag(StateEnum.NotificationSucceeded) || CurrentState().HasFlag(StateEnum.NotificationFailed))">
+                    Notification error
+                </div>
+
+                <div id="divEcpTncContestDisclaimer" data-bind="visible: CurrentState().HasFlag(StateEnum.NotificationSucceeded) && CurrentState().HasFlag(StateEnum.Aborted)">
+                    If an employee chooses NOT to Contest the finding, this is the Final Case result.
+                    You must select the appropriate closure message from the options in the E-Verify Case Closure Section.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,63 @@
+﻿@{
+    Layout = null;
+}
+
+<script type="text/javascript">
+    function btnEcpSsaReverify_Click(e) {
+        var successCallback = function (response) {
+            var newState = EverifyCase.ViewModel.State();
+            var reverificationJob = EverifyCase.ReceiveJob(response);
+
+            reverificationJob && (newState |= EverifyCase.CaseStateEnum.SsaReverification);
+
+            EverifyCase.ViewModel.State(newState);
+        };
+
+        var errorCallback = function (response) {
+            debugger;
+        };
+
+        var p = {
+            Id: EverifyCase.ViewModel.Id()
+        };
+
+        LookoutService.CallServer("/Everify/SsaReverify", p, successCallback, errorCallback);
+    }
+
+    $(document).ready(function () {
+        $(btnEcpSsaReverify).on("click", btnEcpSsaReverify_Click);
+        
+    });
+</script>
+
+<style>
+    #divEcpCaseIncomplete div.row {
+        padding: 2px 10px;
+    }
+</style>
+
+<div id="divEcpCaseIncomplete" class="row">
+    <div class="col-md-8">
+        <div class="row">
+            <div class="col-md-12 well well-sm">
+                <br />
+                @ViewBag.EligibilityStatementMessage<br />
+                <br />
+                @ViewBag.EligibilityStatementDescription<br />
+                <br />
+                <button type="button" id="btnEcpSsaReverify" class="btn btn-primary">Re-verify</button>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="row">
+            <div class="col-md-12 well well-sm">
+                Please, review and correct any errors in the I-9 form and click Re-verify<br />
+                <br />
+                - OR -<br />
+                <br />
+                Close the case by selecting the appropriate closure reason.
+            </div>
+        </div>
+    </div>
+</div>
